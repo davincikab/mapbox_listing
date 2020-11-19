@@ -156,6 +156,7 @@
 	
 <script>
 var geo, ajaxReq = 'ToCancelPrevReq', featureArr = new Array(), isFilterWithBoundary = true;
+var listingClusters;
 
 function abbrState(state) {
 	var states = [
@@ -304,7 +305,7 @@ function renderListings(features) {
 
 
 		// remove features filter
-		map.setFilter('locations', ['has', 'listingID']);
+		// map.setFilter('locations', ['has', 'listingID']);
 	}
 }
 
@@ -412,23 +413,22 @@ map.on('load', function() {
 			"type": "FeatureCollection",
 			"features": []
 		},
-		cluster: true,
-		clusterMaxZoom: 15,
-		clusterRadius: 50 
+		// cluster: true,
+		// clusterMaxZoom: 15,
+		// clusterRadius: 50 
 	});
 
 	map.addLayer({
 		id: 'clusters',
 		type: 'circle',
 		source: 'locations',
-		filter: ['has', 'point_count'],
 		paint: {
 			'circle-color': '#fff',
 			'circle-stroke-color':'#d9e0e6',
 			'circle-stroke-width':0.5,
 			'circle-radius': [
 				'step',
-				['get', 'point_count'],
+				['get', 'count'],
 				20,
 				100,
 				30,
@@ -442,51 +442,27 @@ map.on('load', function() {
 		id: 'cluster-count',
 		type: 'symbol',
 		source: 'locations',
-		filter: ['has', 'point_count'],
+		filter: ['has', 'count'],
 		layout: {
-			'text-field': '{point_count_abbreviated}',
+			'text-field': ['get', 'count'],
 			'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
 			'text-size': 16,
 		}
 	});
-			
-	// map.addLayer({
-	// 	"id": "locations",
-	// 	"type": "symbol",
-	// 	"source": "locations",
-	// 	"filter":['!', ['has', 'point_count']],
-	// 	"layout": {
-	// 			'text-field': ['get', 'title'],
-	// 			'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-	// 			'text-justify': 'auto',
-	// 			'visibility':'visible'
-	// 	},
-
-	// });	
 
 	// cluster count labels
 	map.on('click', 'clusters', function (e) {
-		var features = map.queryRenderedFeatures(e.point, {
-			layers: ['clusters']
-		});
 
-		var clusterId = features[0].properties.cluster_id;
-		map.getSource('locations').getClusterExpansionZoom(
-			clusterId,
-			function (err, zoom) {
-				if (err) return;
-			
-				map.easeTo({
-					center: features[0].geometry.coordinates,
-					zoom: zoom
-				});
-			}
-		);
+		map.easeTo({
+			center: e.lngLat,
+			zoom: 14.5
+		});
 	});
 
 	map.on('mouseenter', 'clusters', function () {
 		map.getCanvas().style.cursor = 'pointer';
 	});
+
 	map.on('mouseleave', 'clusters', function () {
 		map.getCanvas().style.cursor = '';
 	});
@@ -497,8 +473,8 @@ map.on('load', function() {
 		map.getCanvas().style.cursor = 'pointer';
 
 		popup.setLngLat(e.lngLat)
-		.setText("Click to remove map boundar")
-		.addTo(map);
+			.setText("Click to remove map boundar")
+			.addTo(map);
 	});
 
 	map.on('mouseleave', 'boundary', function() {
@@ -514,7 +490,9 @@ map.on('load', function() {
 
 		console.log("Clicked Boundary");
 
-		map.getSource('locations').setData(geojson);
+		map.getSource('locations').setData(listingClusters);
+		querySourceFeatures(featureArr);
+
 		map.getSource('boundary').setData(
 			{
 			'type':'FeatureCollection',
@@ -611,7 +589,6 @@ map.on('load', function() {
 
 
 	map.on('moveend', function() {
-		querySourceFeatures();
 		ajaxReq = $.ajax({
 			url: 'https://cacheapi.realty.com/Include/AJAX/MapSearch/GetListingPins.aspx',
 			type: 'POST',
@@ -642,6 +619,8 @@ map.on('load', function() {
 
 	// listen to map zoom
 	map.on('zoom',  function() {
+		console.log("Zoom Event");
+
 		map.getCanvas().style.cursor = '';
 		popup.remove();
 
@@ -673,10 +652,10 @@ map.on('load', function() {
 	});
 
 	map.on('data', function(e) {
-		if(e.sourceId == 'locations' && e.isSourceLoaded) {
-			map.on('move', querySourceFeatures);
-			querySourceFeatures();
-		}
+		// if(e.sourceId == 'locations' && e.isSourceLoaded) {
+		// 	map.on('move', querySourceFeatures);
+		// 	querySourceFeatures();
+		// }
 		
 	});
 
@@ -687,65 +666,83 @@ map.on('load', function() {
 
 // update source locations with new data
 function updateLocationSource(data) {
+	featureArr = [];
 	var keys = data.pins;
 
+	// cluster
+	let clusters = data.clusters.map(cluster => {
+		var feature = {
+			"type": "Feature",
+			"geometry": {
+				"type": "Point",
+				"coordinates": [cluster.lon, cluster.lat]
+			},
+			"properties": cluster
+		};
+
+		return feature;
+	});
+	let listingClusters = {
+		'type':'FeatureCollection',
+		'features':clusters
+	};
+
+	// map pins
 	for (var key of keys) {
 		var feature = {
-		"type": "Feature",
-		"id": key.lid,
-		"geometry": {
-			"type": "Point",
-			"coordinates": [key.lon, key.lat]
-		},
-		"properties": {
-			"title": key.price,
-			"url": key.url,
-			"isFav": key.isFav,
-			"listingID": key.lid
-		}
+			"type": "Feature",
+			"id": key.lid,
+			"geometry": {
+				"type": "Point",
+				"coordinates": [key.lon, key.lat]
+			},
+			"properties": {
+				"title": key.price,
+				"url": key.url,
+				"isFav": key.isFav,
+				"listingID": key.lid
+			}
 		};
 		featureArr.push(feature);
 	}
 
-	let geojson = {
-		'type':'FeatureCollection',
-		'features':featureArr
-	};
-
 	if(isFilterWithBoundary) {
 		// filter data within mask bounds
 		let listingWithin = turf.pointsWithinPolygon(
-			turf.featureCollection(featureArr), 
+			listingClusters, 
 			turf.multiPolygon(geo.coordinates)
 		);
 
 		console.log(listingWithin);
 
 		map.getSource('locations').setData(listingWithin);
+
+		// filter pins within view
+		let pinsWithinView = turf.pointsWithinPolygon(
+				turf.featureCollection(featureArr), 
+				turf.multiPolygon(geo.coordinates)
+		);
+
+		console.log(pinsWithinView);
+		// update the pins
+		querySourceFeatures(pinsWithinView.features);
 	} else {
-		map.getSource('locations').setData(geojson);
+		map.getSource('locations').setData(listingClusters);
+
+		querySourceFeatures(featureArr);
 	}
+
 	
 }
 
 // query source features
-function querySourceFeatures() {
-	var features = features = map.querySourceFeatures('locations');
+function querySourceFeatures(features) {
+	// Populate features for the listing overlay.
+	renderListings(features);
 
-	if (features) {
-		features = features.filter(feature => !feature.properties.cluster);
+	// create the markers
+	renderMapMarkers(features);
 
-		var uniqueFeatures = getUniqueFeatures(features, 'listingID');
-		// Populate features for the listing overlay.
-		renderListings(uniqueFeatures);
-
-		// create the markers
-		renderMapMarkers(uniqueFeatures);
-
-		// Store the current features in sn `airports` variable to
-		// later use for filtering on `keyup`.
-		airports = uniqueFeatures;
-	}
 }
 </script>
 
