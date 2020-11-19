@@ -263,7 +263,8 @@ map.addControl(draw);
 
 // Create a popup, but don't add it to the map yet.
 var popup = new mapboxgl.Popup({
-	closeButton: false
+	closeButton: false,
+	closeOnMove:true
 });
 
 var listingEl = document.getElementById('feature-listing');
@@ -353,14 +354,6 @@ function renderMapMarkers(features) {
 		let marker = new mapboxgl.Marker({ element:el})
 			.setLngLat(feature.geometry.coordinates)
 			.addTo(map);
-
-		el.addEventListener('mouseover', function(e) {
-			popup.setLngLat(feature.geometry.coordinates).setText( feature.properties.title + ' (' + feature.properties.listingID +')').addTo(map);
-		});
-
-		el.addEventListener('mouseleave', function(e) {
-			popup.remove();
-		});
 		
 		locationMarkers.push(marker);
 	});
@@ -455,16 +448,27 @@ map.on('load', function() {
 
 		map.easeTo({
 			center: e.lngLat,
-			zoom: 14.5
+			zoom:Math.round(map.getZoom()) + 1
 		});
 	});
 
-	map.on('mouseenter', 'clusters', function () {
+	map.on('mouseenter', 'clusters', function (e) {
 		map.getCanvas().style.cursor = 'pointer';
+
+		// create a marker 
+		var feature = e.features[0];
+        popup
+			.setLngLat(feature.geometry.coordinates)
+			.setText("avg Price: "+ feature.properties.avgPrice +
+				", count: " + feature.properties.count +
+				",maxPrice: "+ feature.properties.maxPrice +
+				", minPrice: "+ feature.properties.minPrice 
+			).addTo(map);
 	});
 
 	map.on('mouseleave', 'clusters', function () {
 		map.getCanvas().style.cursor = '';
+		popup.remove();
 	});
 
 	// boundary layer interaction
