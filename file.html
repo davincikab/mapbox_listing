@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Document</title>
+	<script src="https://code.jquery.com/jquery-3.5.1.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+	<style>
+		.property-marker {
+			background-color: #fff;
+			width:auto !important;
+			border:1px solid #d9e0e6;
+			height: 20px !important;
+			text-align: center;
+			color:#202c4a;
+			font-weight: 800;
+			font-size: 12px;
+			padding: 2px 6px;
+			border-radius: 4px;
+			transition-property: opacity,color,background-color,border-color;
+    		transition-duration: .25s;
+			box-shadow: 1px 1px 0.3em #ddd;
+			cursor: pointer;
+		}
+
+		.property-marker:hover {
+			background-color: #202c4a;
+			color:white;
+		}
+
+		.property-marker:hover .marker-tip {
+			border-color: #202c4a transparent transparent transparent;
+		}
+
+		.marker-tip {
+			position: absolute;
+			bottom: 0%;
+			z-index: 1;
+			left: 35%;
+			margin-bottom: -13px;
+			border: 8px solid;
+			border-color:white transparent transparent transparent;
+		}
+		</style>
+</head>
+<body>
+<div class="main-container" id="mapsearch-results">
+
+	<div class="hv-100">
+
+	<script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/wicket/1.3.6/wicket.min.js"></script>
+	
+	<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.5.1/mapbox-gl-geocoder.css" type="text/css"/>
+	<link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
+	<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.5.1/mapbox-gl-geocoder.min.js"></script>
+	<link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.0.9/mapbox-gl-draw.css' type='text/css' />
+	<script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.0.9/mapbox-gl-draw.js'></script>
+
+	<script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+	<!-- Promise polyfill script required to use Mapbox GL Geocoder in IE 11 -->
+	<script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script>
+
+	
+	<style>
+		body {
+			padding:0;
+			margin:0;
+		}
+		.mapboxgl-ctrl-geocoder--button{
+			height: auto;
+		}
+		#map input.mapboxgl-ctrl-geocoder--input {
+			padding: 6px 35px;
+		}
+		.hv-100{
+			height: calc(100vh - 45px);;
+			position: relative;
+		}
+		#map {
+			position: absolute;
+			right: 25%;
+			top: 0;
+			bottom: 0;
+			width: 75%;
+		}
+		.map-overlay {
+			position: absolute;
+			width: 25%;
+			top: 0;
+			bottom: 0;
+			right: 0;
+			font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+			background-color: #fff;
+			max-height: 100%;
+			overflow: hidden;
+		}
+	
+		.map-overlay fieldset {
+			display: none;
+			background: #ddd;
+			border: none;
+			padding: 10px;
+			margin: 0;
+		}
+	
+		.map-overlay input {
+			display: block;
+			border: none;
+			width: 100%;
+			border-radius: 3px;
+			padding: 10px;
+			margin: 0;
+			box-sizing: border-box;
+		}
+	
+		.map-overlay .listing {
+			overflow: auto;
+			max-height: 100%;
+		}
+	
+		.map-overlay .listing > * {
+			display: block;
+			padding: 5px 10px;
+			margin: 0;
+		}
+	
+		.map-overlay .listing a {
+			border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+			color: #404;
+			text-decoration: none;
+		}
+	
+		.map-overlay .listing a:last-child {
+			border: none;
+		}
+	
+		.map-overlay .listing a:hover {
+			background: #f0f0f0;
+		}
+	</style>
+	
+	<div id="map"></div>
+
+	<div class="map-overlay">
+		<fieldset>
+			<input
+				id="feature-filter"
+				type="text"
+				placeholder="Filter results by name"
+			/>
+		</fieldset>
+		<div id="feature-listing" class="listing"></div>
+	</div>
+	
+<script>
+var geo, ajaxReq = 'ToCancelPrevReq', featureArr = new Array(), isFilterWithBoundary = true;
+
+function abbrState(state) {
+	var states = [
+	['Arizona', 'AZ'],
+	['Alabama', 'AL'],
+	['Alaska', 'AK'],
+	['Arkansas', 'AR'],
+	['California', 'CA'],
+	['Colorado', 'CO'],
+	['Connecticut', 'CT'],
+	['Delaware', 'DE'],
+	['Florida', 'FL'],
+	['Georgia', 'GA'],
+	['Hawaii', 'HI'],
+	['Idaho', 'ID'],
+	['Illinois', 'IL'],
+	['Indiana', 'IN'],
+	['Iowa', 'IA'],
+	['Kansas', 'KS'],
+	['Kentucky', 'KY'],
+	['Louisiana', 'LA'],
+	['Maine', 'ME'],
+	['Maryland', 'MD'],
+	['Massachusetts', 'MA'],
+	['Michigan', 'MI'],
+	['Minnesota', 'MN'],
+	['Mississippi', 'MS'],
+	['Missouri', 'MO'],
+	['Montana', 'MT'],
+	['Nebraska', 'NE'],
+	['Nevada', 'NV'],
+	['New Hampshire', 'NH'],
+	['New Jersey', 'NJ'],
+	['New Mexico', 'NM'],
+	['New York', 'NY'],
+	['North Carolina', 'NC'],
+	['North Dakota', 'ND'],
+	['Ohio', 'OH'],
+	['Oklahoma', 'OK'],
+	['Oregon', 'OR'],
+	['Pennsylvania', 'PA'],
+	['Rhode Island', 'RI'],
+	['South Carolina', 'SC'],
+	['South Dakota', 'SD'],
+	['Tennessee', 'TN'],
+	['Texas', 'TX'],
+	['Utah', 'UT'],
+	['Vermont', 'VT'],
+	['Virginia', 'VA'],
+	['Washington', 'WA'],
+	['West Virginia', 'WV'],
+	['Wisconsin', 'WI'],
+	['Wyoming', 'WY'],
+	];
+
+	const selectedState = states.find(s =>
+		s.find(x => x.toLowerCase() === state.toLowerCase())
+	);
+
+	if (!selectedState) return null
+	return selectedState
+	.filter(s => s.toLowerCase() !== state.toLowerCase())
+	.join("")
+}
+
+var wkt = new Wkt.Wkt();
+
+mapboxgl.accessToken = 'pk.eyJ1IjoiYWxnaWIiLCJhIjoiNGJiNjA4Mzc4MjJlMzE5MmJjOWU3YzhjMDJiNGUyOTAifQ.xS7af1lnEL593DZ3f0mOJA';
+var bounds = ''; // wsen 
+
+var map = new mapboxgl.Map({
+	container: 'map',
+	style: 'mapbox://styles/mapbox/light-v10?optimize=true',
+	center: [-80.16799, 26.4086075],
+	maxZoom: 18,
+	minZoom: 5,
+	zoom: 14,
+	//maxBounds: bounds,
+	bearing: 0,
+	pitch: 45	
+
+});
+
+var airports = [];
+
+var geocoder = new MapboxGeocoder({
+	accessToken: mapboxgl.accessToken,
+	marker:false,
+	mapboxgl: mapboxgl,
+	countries: 'us',
+});
+
+map.addControl(geocoder);
+map.addControl(new mapboxgl.NavigationControl());
+
+var draw = new MapboxDraw({
+	displayControlsDefault: false,
+	controls: {
+	polygon: true,
+	trash: true
+	},
+});
+map.addControl(draw);
+
+// Create a popup, but don't add it to the map yet.
+var popup = new mapboxgl.Popup({
+	closeButton: false
+});
+
+var listingEl = document.getElementById('feature-listing');
+
+function renderListings(features) {
+	var empty = document.createElement('p');
+	// Clear any existing listings
+	listingEl.innerHTML = '';
+	if (features.length) {
+		features.forEach(function(feature) {
+			var prop = feature.properties;
+			var item = document.createElement('a');
+			item.href = prop.url;
+			item.target = '_blank';
+			item.textContent = prop.title + ' (' + prop.listingID + ')';
+			item.addEventListener('mouseover', function() {
+				// Highlight corresponding feature on the map
+				popup
+					.setLngLat(feature.geometry.coordinates)
+					.setText(
+						feature.properties.title +
+						' (' +
+						feature.properties.listingID +
+						')'
+					)
+					.addTo(map);
+			});
+			
+			listingEl.appendChild(item);
+		});
+
+	// Show the filter input
+	} else if (features.length === 0) {
+		empty.textContent = 'No results found';
+		listingEl.appendChild(empty);
+	} else {
+		empty.textContent = 'Drag the map to populate results';
+		listingEl.appendChild(empty);
+
+
+		// remove features filter
+		map.setFilter('locations', ['has', 'listingID']);
+	}
+}
+
+function normalize(string) {
+	return string.trim().toLowerCase();
+}
+
+
+function getUniqueFeatures(array, comparatorProperty) {
+	var existingFeatureKeys = {};
+	// Because features come from tiled vector data, feature geometries may be split
+	// or duplicated across tile boundaries and, as a result, features may appear
+	// multiple times in query results.
+
+	var uniqueFeatures = array.filter(function(el) {
+		if (existingFeatureKeys[el.properties[comparatorProperty]]) {
+			return false;
+		} else {
+		existingFeatureKeys[el.properties[comparatorProperty]] = true;
+			return true;
+		}
+	});
+
+	return uniqueFeatures;
+}
+
+function polyMask(mask, boundz) {
+	var bboxPoly = turf.bboxPolygon(boundz);
+	return turf.difference(bboxPoly, mask);
+}
+
+// render Map Markers
+var locationMarkers = [];
+function renderMapMarkers(features) {
+	if(locationMarkers[0]) {
+		locationMarkers.forEach(marker => marker.remove());
+	}
+
+	features.forEach(feature => {
+
+		let el = document.createElement('div');
+		el.classList.add('property-marker');
+		el.innerHTML = feature.properties.title + "<div class='marker-tip'></div>"
+
+		let marker = new mapboxgl.Marker({ element:el})
+			.setLngLat(feature.geometry.coordinates)
+			.addTo(map);
+
+		el.addEventListener('mouseover', function(e) {
+			popup.setLngLat(feature.geometry.coordinates).setText( feature.properties.title + ' (' + feature.properties.listingID +')').addTo(map);
+		});
+
+		el.addEventListener('mouseleave', function(e) {
+			popup.remove();
+		});
+		
+		locationMarkers.push(marker);
+	});
+	
+}
+
+//var bounds = [-122.5336, 37.7049, -122.3122, 37.8398]; // wsen 
+map.on('load', function() {
+	map.addSource('airports', {
+		'type': 'vector',
+		'url': 'mapbox://mapbox.04w69w5j'
+	});
+
+	map.addLayer({
+		'id': 'airport',
+		'source': 'airports',
+		'source-layer': 'ne_10m_airports',
+		'type': 'symbol',
+		'layout': {
+		'icon-image': 'airport-15',
+		'icon-padding': 0,
+		'icon-allow-overlap': true
+		}
+	});
+
+	// boundary data
+	map.addSource('boundary', {
+		'type': 'geojson',
+		'data':{
+			"type": "FeatureCollection",
+			"features": []
+		},
+	});
+
+	map.addLayer({
+		'id': 'boundary',
+		'source':'boundary',
+		'type': 'fill',
+		"paint": {
+			"fill-color": "black",
+			"fill-outline-color": "black",
+			'fill-opacity': 0.7
+		}
+	});
+
+	// location data source
+	map.addSource("locations", {
+		"type": "geojson",
+		"data": {
+			"type": "FeatureCollection",
+			"features": []
+		},
+		cluster: true,
+		clusterMaxZoom: 15,
+		clusterRadius: 50 
+	});
+
+	map.addLayer({
+		id: 'clusters',
+		type: 'circle',
+		source: 'locations',
+		filter: ['has', 'point_count'],
+		paint: {
+			'circle-color': '#fff',
+			'circle-stroke-color':'#d9e0e6',
+			'circle-stroke-width':0.5,
+			'circle-radius': [
+				'step',
+				['get', 'point_count'],
+				20,
+				100,
+				30,
+				750,
+				40
+			]
+		}
+	});
+
+	map.addLayer({
+		id: 'cluster-count',
+		type: 'symbol',
+		source: 'locations',
+		filter: ['has', 'point_count'],
+		layout: {
+			'text-field': '{point_count_abbreviated}',
+			'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+			'text-size': 16,
+		}
+	});
+			
+	// map.addLayer({
+	// 	"id": "locations",
+	// 	"type": "symbol",
+	// 	"source": "locations",
+	// 	"filter":['!', ['has', 'point_count']],
+	// 	"layout": {
+	// 			'text-field': ['get', 'title'],
+	// 			'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+	// 			'text-justify': 'auto',
+	// 			'visibility':'visible'
+	// 	},
+
+	// });	
+
+	// cluster count labels
+	map.on('click', 'clusters', function (e) {
+		var features = map.queryRenderedFeatures(e.point, {
+			layers: ['clusters']
+		});
+
+		var clusterId = features[0].properties.cluster_id;
+		map.getSource('locations').getClusterExpansionZoom(
+			clusterId,
+			function (err, zoom) {
+				if (err) return;
+			
+				map.easeTo({
+					center: features[0].geometry.coordinates,
+					zoom: zoom
+				});
+			}
+		);
+	});
+
+	map.on('mouseenter', 'clusters', function () {
+		map.getCanvas().style.cursor = 'pointer';
+	});
+	map.on('mouseleave', 'clusters', function () {
+		map.getCanvas().style.cursor = '';
+	});
+
+	// boundary layer interaction
+	map.on('mousemove', 'boundary', function(e) {
+		// Change the cursor style as a UI indicator.
+		map.getCanvas().style.cursor = 'pointer';
+
+		popup.setLngLat(e.lngLat)
+		.setText("Click to remove map boundar")
+		.addTo(map);
+	});
+
+	map.on('mouseleave', 'boundary', function() {
+        map.getCanvas().style.cursor = '';
+        popup.remove();
+    });
+
+	map.on('click', 'boundary', function(e) {
+		let geojson = {
+			'type':'FeatureCollection',
+			'features':featureArr
+		};
+
+		console.log("Clicked Boundary");
+
+		map.getSource('locations').setData(geojson);
+		map.getSource('boundary').setData(
+			{
+			'type':'FeatureCollection',
+			'features':[]
+			}
+		);
+
+		isFilterWithBoundary = false;
+
+	});
+
+	// load the boundary data
+	$.getJSON('https://cacheapi.realty.com/Include/AJAX/mapsearch/GetBoundary.aspx?val=boca raton&type=city&state=FL&wkt=true', function(data) {
+		wkt.read(data);
+		var bounds = turf.bbox(wkt.toJson());
+		var boundz = [-180, 90, 180, -90];
+
+		map.fitBounds(bounds, {
+			padding: 60
+		});
+
+		geo = wkt.toJson();
+		var mask = turf.multiPolygon(geo.coordinates);
+
+		map.getSource('boundary').setData(polyMask(mask, boundz));
+		isFilterWithBoundary = true;
+	});
+
+	ajaxReq = $.ajax({
+		url: 'https://cacheapi.realty.com/Include/AJAX/MapSearch/GetListingPins.aspx',
+		type: 'POST',
+		data: {
+		'Criteria/Status': '1,6,11',
+		'Criteria/ListingTypeID': '1',
+
+		'Criteria/SearchMapNELat': 26.41256647824482,//map.getBounds().getNorthEast().lat,
+		'Criteria/SearchMapNELong': -80.15653288388367,//map.getBounds().getNorthEast().lng,
+		'Criteria/SearchMapSWLat': 26.403485712165633,//map.getBounds().getSouthWest().lat,
+		'Criteria/SearchMapSWLong': -80.16815221333619,//map.getBounds().getSouthWest().lng,
+		'Criteria/Zoom': Math.round(map.getZoom())
+		},
+		beforeSend : function() {
+			if(ajaxReq != 'ToCancelPrevReq' && ajaxReq.readyState < 4) {
+				ajaxReq.abort();
+			}
+		},
+
+		success: function (data) {
+			updateLocationSource(data);
+		},
+			error: function (data) {
+			console.log(data);
+		}
+	});
+
+
+
+	geocoder.on('result', function(e) {
+
+		// wait until the map has finished flying to the searched point
+		map.once('move', function() {
+			// add the result as a point in the 'search_point' layer to show up as marker
+			var geocoder_result = e.result.place_name.toLowerCase().replace(', united states', '');
+			//city: data.features[0].place_type[0] === "place" ? data.features[0].text : data.features[0].context.find(c => c.id.includes("place")).text
+			console.log(geocoder_result);
+			//project to use (pixel xy coordinates instead of lat/lon for WebGL)
+			var geocoder_point = map.project([e.result.center[0], e.result.center[1]]);
+			var arr = geocoder_result.split(",").map(function(item) {
+				return item.trim();
+			});
+			console.log(abbrState(arr[1]));
+
+			$.getJSON('https://cacheapi.realty.com/Include/AJAX/mapsearch/GetBoundary.aspx?val=' + arr[0] + '&type=city&state=' + abbrState(arr[1]) + '&wkt=true', function(data) {
+				wkt.read(data);
+				wkt.read(data);
+				var bounds = turf.bbox(wkt.toJson());
+				var boundz = [-180, 90, 180, -90];
+
+				map.fitBounds(bounds, {
+					padding: 60
+				});
+
+				geo = wkt.toJson();
+				var mask = turf.multiPolygon(geo.coordinates);
+
+				map.getSource('boundary').setData(polyMask(mask, boundz));
+				isFilterWithBoundary = true;
+
+			});
+
+
+		});
+	});
+
+
+	map.on('moveend', function() {
+		querySourceFeatures();
+		ajaxReq = $.ajax({
+			url: 'https://cacheapi.realty.com/Include/AJAX/MapSearch/GetListingPins.aspx',
+			type: 'POST',
+			data: {
+				'Criteria/Status': '1,6,11',
+				'Criteria/ListingTypeID': '1',
+				'Criteria/SearchMapNELat': map.getBounds().getNorthEast().lat,
+				'Criteria/SearchMapNELong': map.getBounds().getNorthEast().lng,
+				'Criteria/SearchMapSWLat': map.getBounds().getSouthWest().lat,
+				'Criteria/SearchMapSWLong': map.getBounds().getSouthWest().lng,
+				'Criteria/Zoom': Math.round(map.getZoom())
+			},
+			beforeSend : function() {
+					if(ajaxReq != 'ToCancelPrevReq' && ajaxReq.readyState < 4) {
+						ajaxReq.abort();
+					}
+			},
+
+			success: function (data) {
+				updateLocationSource(data);
+			},
+			error: function (data) {
+				console.log(data);
+			}
+		});        
+
+	});
+
+	// listen to map zoom
+	map.on('zoom',  function() {
+		map.getCanvas().style.cursor = '';
+		popup.remove();
+
+		ajaxReq = $.ajax({
+			url: 'https://cacheapi.realty.com/Include/AJAX/MapSearch/GetListingPins.aspx',
+			type: 'POST',
+			data: {
+				'Criteria/Status': '1,6,11',
+				'Criteria/ListingTypeID': '1',
+				'Criteria/SearchMapNELat': map.getBounds().getNorthEast().lat,
+				'Criteria/SearchMapNELong': map.getBounds().getNorthEast().lng,
+				'Criteria/SearchMapSWLat': map.getBounds().getSouthWest().lat,
+				'Criteria/SearchMapSWLong': map.getBounds().getSouthWest().lng,
+				'Criteria/Zoom': Math.round(map.getZoom())
+			},
+			beforeSend : function() {
+					if(ajaxReq != 'ToCancelPrevReq' && ajaxReq.readyState < 4) {
+						ajaxReq.abort();
+					}
+			},
+
+			success: function (data) {
+				updateLocationSource(data);
+			},
+			error: function (data) {
+				// console.error(data);
+			}
+		});        
+	});
+
+	map.on('data', function(e) {
+		if(e.sourceId == 'locations' && e.isSourceLoaded) {
+			map.on('move', querySourceFeatures);
+			querySourceFeatures();
+		}
+		
+	});
+
+	// Call this function on initialization
+	// passing an empty array to render an empty state
+	renderListings([]);
+});
+
+// update source locations with new data
+function updateLocationSource(data) {
+	var keys = data.pins;
+
+	for (var key of keys) {
+		var feature = {
+		"type": "Feature",
+		"id": key.lid,
+		"geometry": {
+			"type": "Point",
+			"coordinates": [key.lon, key.lat]
+		},
+		"properties": {
+			"title": key.price,
+			"url": key.url,
+			"isFav": key.isFav,
+			"listingID": key.lid
+		}
+		};
+		featureArr.push(feature);
+	}
+
+	let geojson = {
+		'type':'FeatureCollection',
+		'features':featureArr
+	};
+
+	if(isFilterWithBoundary) {
+		// filter data within mask bounds
+		let listingWithin = turf.pointsWithinPolygon(
+			turf.featureCollection(featureArr), 
+			turf.multiPolygon(geo.coordinates)
+		);
+
+		console.log(listingWithin);
+
+		map.getSource('locations').setData(listingWithin);
+	} else {
+		map.getSource('locations').setData(geojson);
+	}
+	
+}
+
+// query source features
+function querySourceFeatures() {
+	var features = features = map.querySourceFeatures('locations');
+
+	if (features) {
+		features = features.filter(feature => !feature.properties.cluster);
+
+		var uniqueFeatures = getUniqueFeatures(features, 'listingID');
+		// Populate features for the listing overlay.
+		renderListings(uniqueFeatures);
+
+		// create the markers
+		renderMapMarkers(uniqueFeatures);
+
+		// Store the current features in sn `airports` variable to
+		// later use for filtering on `keyup`.
+		airports = uniqueFeatures;
+	}
+}
+</script>
+
+
+</div>
+</body>
+</html>
