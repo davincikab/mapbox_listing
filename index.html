@@ -362,6 +362,49 @@ function renderMapMarkers(features) {
 	
 }
 
+// display custom marker clusters
+var clusterMarkers = [];
+function renderClusterMarkers(features) {
+	console.log(features);
+	if(clusterMarkers[0]) {
+		clusterMarkers.forEach(marker => marker.remove());
+	}
+
+	features.forEach(feature => {
+		let el = document.createElement('div');
+		el.classList.add('property-marker');
+		el.innerHTML = feature.properties.point_count + " listings";
+
+		el.addEventListener('click', function() {
+			zoomIntoMapboxCluster(feature);
+		});
+
+		let marker = new mapboxgl.Marker({ element:el})
+			.setLngLat(feature.geometry.coordinates)
+			.addTo(map);
+		
+		clusterMarkers.push(marker);
+	});
+	
+}
+
+function zoomIntoMapboxCluster(feature)	{
+	let clusterId = feature.properties.cluster_id;
+	map.getSource('listing-cluster').getClusterExpansionZoom(
+		clusterId,
+		function (err, zoom) {
+			if (err) return;
+			
+			map.easeTo({
+				center: feature.geometry.coordinates,
+				zoom: zoom
+			});
+
+			updateMapboxCluster();
+		}
+	);
+
+}
 //var bounds = [-122.5336, 37.7049, -122.3122, 37.8398]; // wsen 
 map.on('load', function() {
 	map.addSource('airports', {
@@ -382,57 +425,17 @@ map.on('load', function() {
 	});
 
 	map.on('draw.create', function(e) {
-		console.log(e.features);
-		drawFeatures.push(...e.features);
+		if(drawFeatures[0]) {
+			draw.trash();
+			return;
+		}
 
+		drawFeatures.push(...e.features);
 		draw.trash();
 
 		// call update filter function
 		updateBoundaryFilter();
 	});
-
-	map.on('draw.delete', function(e) {
-		// check if there are more features
-		console.log(e);
-		drawFeatures = drawFeatures.filter(feature => {
-			let ft = e.features.find(fts => fts.id == feature.id);
-			if(ft) {
-				return;
-			}
-
-			return feature;
-		});
-
-		console.log(drawFeatures);
-
-		// reset the map boundary
-		if(drawFeatures.length == 0){
-			clearBoundaryFilter();
-		} else {
-			// update the filter
-			updateBoundaryFilter();
-		}
-	
-	});
-
-	map.on('draw.update', function(e){
-		console.log(e.features);
-
-		drawFeatures = drawFeatures.map(feature => {
-			let ft = e.features.find(fts => fts.id == feature.id);
-			if(ft) {
-				return ft;
-			}
-
-			return feature;
-		});
-
-		// update 
-		updateBoundaryFilter();
-	});
-
-	// style
-	// Mapbox base layers: satellite layer
 
 	// boundary data
 	map.addSource('boundary', {
@@ -461,9 +464,6 @@ map.on('load', function() {
 			"type": "FeatureCollection",
 			"features": []
 		},
-		// cluster: true,
-		// clusterMaxZoom: 15,
-		// clusterRadius: 50 
 	});
 
 	map.addLayer({
@@ -495,6 +495,30 @@ map.on('load', function() {
 			'text-field': ['get', 'count'],
 			'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
 			'text-size': 16,
+		}
+	});
+
+	// Mapbox clusters
+	map.addSource('listing-cluster', {
+		"type": "geojson",
+		"data": {
+			"type": "FeatureCollection",
+			"features": []
+		},
+		'cluster': true,
+		'clusterMaxZoom': 18,
+		'clusterRadius': 50 
+	});
+
+	map.addLayer({
+		id: 'clusters-listing',
+		type: 'circle',
+		source: 'listing-cluster',
+		paint: {
+			'circle-color': '#ff0006',
+			'circle-stroke-color':'#ff0006',
+			'circle-stroke-width':0.5,
+			'circle-radius': 0
 		}
 	});
 
@@ -630,6 +654,7 @@ map.on('load', function() {
 
 
 	map.on('moveend', function() {
+		updateMapboxCluster();
 		ajaxReq = $.ajax({
 			url: 'https://cacheapi.realty.com/Include/AJAX/MapSearch/GetListingPins.aspx',
 			type: 'POST',
@@ -662,6 +687,8 @@ map.on('load', function() {
 	map.on('zoom',  function() {
 		console.log("Zoom Event");
 
+		updateMapboxCluster();
+
 		map.getCanvas().style.cursor = '';
 		popup.remove();
 
@@ -693,19 +720,33 @@ map.on('load', function() {
 	});
 
 	map.on('data', function(e) {
-		// if(e.sourceId == 'locations' && e.isSourceLoaded) {
-		// 	map.on('move', querySourceFeatures);
-		// 	querySourceFeatures();
-		// }
+		if(e.sourceId == 'listing-cluster' && e.isSourceLoaded) {
+			console.log("Added data");
+			map.on('move', updateMapboxCluster);
+
+			updateMapboxCluster();
+		}
 		
 	});
 
 	// Call this function on initialization
 	// passing an empty array to render an empty state
 	renderListings([]);
-
 	map.addControl(draw);
 });
+
+function updateMapboxCluster() {
+	var features = map.querySourceFeatures('listing-cluster');
+
+	// update the cluster
+	let clusterFeatures = features.filter(feature => feature.properties.cluster);
+	
+	renderClusterMarkers(clusterFeatures);
+
+	// update the markers
+	let markerFeatures = features.filter(feature => !feature.properties.cluster);
+	renderMapMarkers(markerFeatures);
+}
 
 // update source locations with new data
 function updateLocationSource(data) {
@@ -725,7 +766,7 @@ function updateLocationSource(data) {
 
 		return feature;
 	});
-	
+
 	listingClusters = {
 		'type':'FeatureCollection',
 		'features':clusters
@@ -757,7 +798,7 @@ function updateLocationSource(data) {
 			turf.multiPolygon(geo.coordinates)
 		);
 
-		console.log(listingWithin);
+		// console.log(listingWithin);
 
 		map.getSource('locations').setData(listingWithin);
 
@@ -769,11 +810,21 @@ function updateLocationSource(data) {
 
 		console.log(pinsWithinView);
 		// update the pins
-		querySourceFeatures(pinsWithinView.features);
+		// querySourceFeatures(pinsWithinView.features);
+
+		if(pinsWithinView.features.length == 0) {
+			renderMapMarkers([]);
+			renderClusterMarkers([]);
+		}
+
+		map.getSource('listing-cluster').setData(pinsWithinView);
 	} else {
 		map.getSource('locations').setData(listingClusters);
 
-		querySourceFeatures(featureArr);
+		// querySourceFeatures(featureArr);
+		map.getSource('listing-cluster').setData(
+			turf.featureCollection(featureArr)
+		);
 	}
 
 	
@@ -807,7 +858,11 @@ function updateBoundaryFilter() {
 
 	console.log(pinsWithinView);
 	// update the pins
-	querySourceFeatures(pinsWithinView.features);
+	map.getSource('listing-cluster').setData(pinsWithinView);
+
+	// querySourceFeatures(pinsWithinView.features);
+
+
 }
 
 // clear boundary
